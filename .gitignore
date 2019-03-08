@@ -1,0 +1,8 @@
+/audio_much/__pycache__
+*.h5
+*.pickle
+*.pick
+/.idea
+*.csv
+*.npy
+resources/*.m4a
