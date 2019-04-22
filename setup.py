@@ -17,7 +17,8 @@ setup(name='audio_much',
         'pandas',
         'matplotlib',
         'kapre',
-        'sklearn'
+        'sklearn',
+        'tables'
       ],
       extras_require={
           'tests': ['tensorflow'],
