@@ -42,17 +42,18 @@ def build_lstm_audio_network(n_classes):
 # build_lstm_audio_network(254).summary()
 
 class MiniBatchGeneratorSequence(Sequence):
-    def __init__(self, hdf):
-        self.hdf = hdf
-        self.hdf_keys = list(hdf.keys())
-        self.batches = 0
-        self.batch_metas = []
-        for hdf_key in self.hdf_keys:
-            x = hdf[hdf_key]['feature'][()]
-            batch_size = x.shape[0] - timeseries_length
-            curr_batch_size = int(np.ceil(batch_size / mini_batch_size))
-            self.batch_metas.append({'start': self.batches, 'end': self.batches + curr_batch_size, 'hdf_key': hdf_key})
-            self.batches += curr_batch_size
+    def __init__(self, data_filename):
+        self.data_filename = data_filename
+        with h5py.File(self.data_filename, 'r', libver='latest', swmr=True) as hdf:
+            self.hdf_keys = list(hdf.keys())
+            self.batches = 0
+            self.batch_metas = []
+            for hdf_key in self.hdf_keys:
+                x = hdf[hdf_key]['feature'][()]
+                batch_size = x.shape[0] - timeseries_length
+                curr_batch_size = int(np.ceil(batch_size / mini_batch_size))
+                self.batch_metas.append({'start': self.batches, 'end': self.batches + curr_batch_size, 'hdf_key': hdf_key})
+                self.batches += curr_batch_size
     def __len__(self):
         return self.batches
     def __getitem__(self, overall_batch_idx):
@@ -60,8 +61,9 @@ class MiniBatchGeneratorSequence(Sequence):
                           if batch_meta['start'] <= overall_batch_idx < batch_meta['end'])
         hdf_key = batch_meta['hdf_key']
         mini_batch_idx = overall_batch_idx - batch_meta['start']
-        x = hdf[hdf_key]['feature'][()]
-        label = hdf[hdf_key]['label'][()]
+        with h5py.File(self.data_filename, 'r', libver='latest', swmr=True) as hdf:
+            x = hdf[hdf_key]['feature'][()]
+            label = hdf[hdf_key]['label'][()]
         batch_size = x.shape[0] - timeseries_length
         mini_batch_count = int(np.ceil(batch_size / mini_batch_size))
         if mini_batch_idx == mini_batch_count - 1 and batch_size % mini_batch_size > 0:
@@ -82,14 +84,10 @@ validation_data_filename = 'songs_validation_data_22050_sequence_parts.h5'
 lstm_model = build_lstm_audio_network(len(encoder.classes_))
 
 
-with h5py.File(training_data_filename, 'r') as hdf:
-    with h5py.File(validation_data_filename, 'r') as validation_hdf:
-        hdf_keys = list(hdf.keys())
-        validation_hdf_keys = list(validation_hdf.keys())
-        lstm_model.fit_generator(MiniBatchGeneratorSequence(hdf),
-                                 validation_data=MiniBatchGeneratorSequence(validation_hdf),
-                                 workers=3, max_queue_size=10, use_multiprocessing=False,
-                                 epochs=10)
+lstm_model.fit_generator(MiniBatchGeneratorSequence(training_data_filename),
+                         validation_data=MiniBatchGeneratorSequence(validation_data_filename),
+                         workers=3, max_queue_size=10, use_multiprocessing=True,
+                         epochs=10)
 
 
 lstm_model.save('model_raw_22050_lstm_01.h5')
