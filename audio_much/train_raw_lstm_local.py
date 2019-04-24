@@ -69,45 +69,10 @@ class MiniBatchGeneratorSequence(Sequence):
         features = np.zeros((curr_mini_batch_size, timeseries_length, 33), dtype=np.float64)
         y = np_utils.to_categorical(encoder.transform([label] * curr_mini_batch_size),
                                     num_classes=encoder.classes_.shape[0])
-        # for batch_idx in range(0, curr_mini_batch_size):
-        #     for timeseries_idx in range(0, timeseries_length):
-        #         features[batch_idx, timeseries_idx, :] = x[(mini_batch_idx * batch_idx) + timeseries_idx]
-        print('hdf_key: ' + hdf_key + ' mini-batch-idx: ' + str(mini_batch_idx))
+        for batch_idx in range(0, curr_mini_batch_size):
+            for timeseries_idx in range(0, timeseries_length):
+                features[batch_idx, timeseries_idx, :] = x[(mini_batch_idx * batch_idx) + timeseries_idx]
         return features, y
-
-
-def mini_batch_generator(hdf, df_keys):
-    idx = 0
-    while True:
-        df_key = df_keys[idx]
-        x = hdf[df_key]['feature'][()]
-        label = hdf[df_key]['label'][()]
-        batch_size = x.shape[0] - timeseries_length
-        mini_batch_count = int(np.ceil(batch_size / mini_batch_size))
-        for mini_batch_idx in range(0, mini_batch_count):
-            if mini_batch_idx == mini_batch_count - 1 and batch_size % mini_batch_size > 0:
-                curr_mini_batch_size = batch_size % mini_batch_size
-            else:
-                curr_mini_batch_size = mini_batch_size
-            features = np.zeros((curr_mini_batch_size, timeseries_length, 33), dtype=np.float64)
-            y = np_utils.to_categorical(encoder.transform([label] * curr_mini_batch_size), num_classes=encoder.classes_.shape[0])
-            # for batch_idx in range(0, curr_mini_batch_size):
-            #     for timeseries_idx in range(0, timeseries_length):
-            #         features[batch_idx, timeseries_idx, :] = x[(mini_batch_idx * batch_idx) + timeseries_idx]
-            print('yieding idx: ' + str(idx) + ' mini-batch-idx: ' + str(mini_batch_idx))
-            yield features, y
-        idx += 1
-        if idx >= len(df_keys):
-            idx = 0
-
-
-def calculate_steps_epoch(hdf, df_keys):
-    batches = 0
-    for df_key in df_keys:
-        x = hdf[df_key]['feature'][()]
-        batch_size = x.shape[0] - timeseries_length
-        batches += int(np.ceil(batch_size / mini_batch_size))
-    return batches
 
 
 training_data_filename = 'songs_training_data_22050_sequence_parts.h5'
@@ -123,23 +88,6 @@ with h5py.File(training_data_filename, 'r') as hdf:
                                  validation_data=MiniBatchGeneratorSequence(validation_hdf),
                                  workers=3, max_queue_size=10, use_multiprocessing=False,
                                  epochs=10)
-
-
-with h5py.File(training_data_filename, 'r') as hdf:
-    with h5py.File(validation_data_filename, 'r') as validation_hdf:
-        hdf_keys = list(hdf.keys())
-        validation_hdf_keys = list(validation_hdf.keys())
-        lstm_model.fit_generator(mini_batch_generator(hdf, hdf_keys),
-                                 validation_data=mini_batch_generator(validation_hdf, validation_hdf_keys),
-                                 validation_steps=calculate_steps_epoch(validation_hdf, validation_hdf_keys),
-                                 steps_per_epoch=calculate_steps_epoch(hdf, hdf_keys),
-                                 # workers=4, max_queue_size=15, use_multiprocessing=False,
-                                 epochs=10)
-
-
-# max_queue_size=1, workers=0, steps_per_epoch=1, use_multiprocessing=False
-
-
 
 
 lstm_model.save('model_raw_22050_lstm_01.h5')
