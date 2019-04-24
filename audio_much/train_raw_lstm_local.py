@@ -55,9 +55,11 @@ class MiniBatchGeneratorSequence(Sequence):
             self.batches += curr_batch_size
     def __len__(self):
         return self.batches
-    def __getitem__(self, mini_batch_idx):
-        hdf_key = next(batch_meta['hdf_key']
-                       for batch_meta in self.batch_metas if batch_meta['start'] <= mini_batch_idx < batch_meta['end'])
+    def __getitem__(self, overall_batch_idx):
+        batch_meta = next(batch_meta for batch_meta in self.batch_metas
+                          if batch_meta['start'] <= overall_batch_idx < batch_meta['end'])
+        hdf_key = batch_meta['hdf_key']
+        mini_batch_idx = overall_batch_idx - batch_meta['start']
         x = hdf[hdf_key]['feature'][()]
         label = hdf[hdf_key]['label'][()]
         batch_size = x.shape[0] - timeseries_length
