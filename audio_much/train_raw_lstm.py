@@ -17,12 +17,13 @@ sess = tf.Session(config=config)
 from functools import partial
 import gc
 import h5py
+import time
 
 encoder = LabelEncoder()
 encoder.classes_ = np.load('songs_training_data_classes.npy')
 
 timeseries_length = 200
-mini_batch_size = 64
+mini_batch_size = 128
 
 
 def build_lstm_audio_network(n_classes):
@@ -30,11 +31,14 @@ def build_lstm_audio_network(n_classes):
     inputs = Input(shape=input_shape)
     # lstm = LSTM(128, return_sequences=True)(inputs)
     # lstm = LSTM(32, return_sequences=False)(lstm)
-    lstm = LSTM(200, return_sequences=False)(inputs)
-    lstm = Dense(128, activation='relu')(lstm)
+    lstm = LSTM(512, dropout=0.05, recurrent_dropout=0.35, return_sequences=True)(inputs)
+    lstm = BatchNormalization()(lstm)
+    lstm = LSTM(256, dropout=0.05, recurrent_dropout=0.35, return_sequences=False)(lstm)
+    lstm = BatchNormalization()(lstm)
+    # lstm = Dense(100, activation='relu')(lstm)
     lstm = Dense(n_classes, activation='softmax')(lstm)
     model = Model(inputs, lstm)
-    model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['accuracy', 'categorical_accuracy'])
     return model
 
 
@@ -51,7 +55,7 @@ def mini_batch_generator(df_keys, training_data_filename):
         batch_size = x.shape[0] - timeseries_length
         mini_batch_count = int(np.ceil(batch_size / mini_batch_size))
         for mini_batch_idx in range(0, mini_batch_count):
-            if mini_batch_idx == mini_batch_count - 1:
+            if mini_batch_idx == mini_batch_count - 1 and batch_size % mini_batch_size > 0:
                 curr_mini_batch_size = batch_size % mini_batch_size
             else:
                 curr_mini_batch_size = mini_batch_size
@@ -72,7 +76,7 @@ def calculate_steps_epoch(df_keys, training_data_filename):
         with h5py.File(training_data_filename, 'r') as hdf:
             x = hdf[df_key]['feature'][()]
         batch_size = x.shape[0] - timeseries_length
-        batches += np.ceil(batch_size / mini_batch_size)
+        batches += int(np.ceil(batch_size / mini_batch_size))
     return batches
 
 
@@ -80,14 +84,15 @@ training_data_filename = 'songs_training_data_22050_sequence_parts.h5'
 validation_data_filename = 'songs_validation_data_22050_sequence_parts.h5'
 lstm_model = build_lstm_audio_network(len(encoder.classes_))
 
+
 # max_queue_size=1, workers=0, steps_per_epoch=1,
 #with pd.HDFStore(training_data_filename) as hdf:
 with h5py.File(training_data_filename, 'a') as hdf:
     hdf_keys = list(hdf.keys())
     lstm_model.fit_generator(mini_batch_generator(hdf_keys, training_data_filename),
                              validation_data=mini_batch_generator(hdf_keys, validation_data_filename),
-                             validation_steps=calculate_steps_epoch(hdf_keys, training_data_filename),
-                             steps_per_epoch=calculate_steps_epoch(hdf_keys, validation_data_filename),
+                             validation_steps=calculate_steps_epoch(hdf_keys, validation_data_filename),
+                             steps_per_epoch=calculate_steps_epoch(hdf_keys, training_data_filename),
                              epochs=10, use_multiprocessing=True)
 
 

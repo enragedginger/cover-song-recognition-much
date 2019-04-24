@@ -244,3 +244,11 @@ def save_training_data(sample_rate, out_file):
     df = df.dropna()
     df.to_pickle(out_file)
 
+
+
+
+# import concurrent.futures
+# from functools import partial
+# with concurrent.futures.ThreadPoolExecutor() as executor:
+        #     assign_rows_fn = partial(assign_rows, features, x, mini_batch_idx)
+        #     executor.map(assign_rows_fn, range(0, curr_mini_batch_size))
