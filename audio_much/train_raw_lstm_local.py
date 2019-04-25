@@ -11,13 +11,18 @@ from sklearn.preprocessing import LabelEncoder
 import numpy as np
 import random as randy
 import tensorflow as tf
+import keras.backend
 config = tf.ConfigProto()
 config.gpu_options.allow_growth=True
 sess = tf.Session(config=config)
+from tensorflow.python import debug as tf_debug
+# keras.backend.set_session(tf_debug.TensorBoardDebugWrapperSession(sess, "stephen-ml:6007"))
+keras.backend.set_session(sess)
 from functools import partial
 import gc
 import h5py
 import time
+from keras.callbacks import TensorBoard
 
 encoder = LabelEncoder()
 encoder.classes_ = np.load('songs_training_data_classes.npy')
@@ -31,7 +36,7 @@ def build_lstm_audio_network(n_classes):
     inputs = Input(shape=input_shape)
     # lstm = LSTM(128, return_sequences=True)(inputs)
     # lstm = LSTM(32, return_sequences=False)(lstm)
-    lstm = LSTM(32, dropout=0.15, recurrent_dropout=0.35, return_sequences=False)(inputs)
+    lstm = LSTM(32, dropout=0.15, recurrent_dropout=0.35, return_sequences=False, unroll=True, implementation=2, input_shape=input_shape)(inputs)
     # lstm = Dense(100, activation='relu')(lstm)
     lstm = Dense(n_classes, activation='softmax')(lstm)
     model = Model(inputs, lstm)
@@ -84,10 +89,15 @@ validation_data_filename = 'songs_validation_data_22050_sequence_parts.h5'
 lstm_model = build_lstm_audio_network(len(encoder.classes_))
 
 
+
+# tensorboard = TensorBoard(log_dir="logs/{}".format(time.time()), update_freq=1000)
+
 lstm_model.fit_generator(MiniBatchGeneratorSequence(training_data_filename),
                          validation_data=MiniBatchGeneratorSequence(validation_data_filename),
                          workers=3, max_queue_size=10, use_multiprocessing=True,
-                         epochs=10)
+                         epochs=10,
+                         # callbacks=[tensorboard]
+                         )
 
 
 lstm_model.save('model_raw_22050_lstm_01.h5')
