@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import glob
 import h5py
+import csv
 
 import librosa
 # import librosa.display
@@ -10,28 +11,29 @@ import re
 from functools import partial
 from sklearn.preprocessing import LabelEncoder
 
-# Do this before use matplotlib on Mac: https://stackoverflow.com/questions/29433824/unable-to-import-matplotlib-pyplot-as-plt-in-virtualenv
-# import matplotlib.pyplot as plt
+root_music_dir = '/Users/hopper/Desktop/music_subset'
+root_music_validation_dir = '/Users/hopper/Desktop/validation_music'
+# root_music_dir='/home/stephen/Desktop/music/training'
+training_csv = 'songs_training.csv'
+validation_csv = 'songs_validation.csv'
 
-# root_music_dir='/Users/hopper/Desktop/music'
-root_music_dir='/home/stephen/Desktop/music/training'
+
+def write_songs_csv(filename, music_dir):
+    with open(filename, 'w') as out_file:
+        writer = csv.writer(out_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_ALL)
+        writer.writerow(['name', 'location'])
+        for root, directories, filenames in os.walk(music_dir):
+            for filename in filenames:
+                if re.match('^.*\.(wma|WMA|mp3|MP3|wav|WAV|m4a|M4A)$', filename):
+                    writer.writerow([('.').join(filename.split('.')[:-1]), os.path.join(root, filename)])
 
 
 def write_training_csv():
-    import csv
-    with open('songs_training.csv', 'w') as out_file:
-        writer = csv.writer(out_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_ALL)
-        writer.writerow(['name', 'location'])
-        for root, directories, filenames in os.walk(root_music_dir):
-            for filename in filenames:
-                if re.match('^.*\.(wma|WMA|mp3|MP3|wav|WAV|m4a|M4A)$', filename):
-                    writer.writerow([filename, os.path.join(root, filename)])
+    write_songs_csv(training_csv, root_music_dir)
 
 
-def display_song(song_location):
-    raw_tertiary, sampling_rate = librosa.load(song_location)
-    plt.figure(figsize=(12, 4))
-    librosa.display.waveplot(raw_tertiary, sr=sampling_rate)
+def write_validation_csv():
+    write_songs_csv(validation_csv, root_music_validation_dir)
 
 
 def feature_gen_row(target_sample_rate, row):
@@ -93,11 +95,6 @@ def build_audio_feature_sequences(X, target_sample_rate):
     return features
 
 
-# filename = '/home/stephen/Desktop/music/training/Rage Against the Machine/Renegades/06 I\'m Housin\'.wma'
-# target_sample_rate = 22050
-# X, sample_rate = librosa.load(filename, sr=target_sample_rate, res_type='kaiser_fast')
-
-
 # https://github.com/keunwoochoi/kapre/blob/master/examples/prepare%20audio.ipynb
 def feature_gen_row_raw(target_sample_rate, row):
     try:
@@ -126,9 +123,11 @@ def feature_gen_row_raw_save(target_sample_rate, hdf, idx, row):
         print('generating features for: ' + row['location'])
         X, sample_rate = librosa.load(row['location'], sr=target_sample_rate, res_type='kaiser_fast')
         X_50, sample_rate_50 = librosa.load(row['location'], sr=target_sample_rate, res_type='kaiser_fast', offset=0.5)
+        X_25, sample_rate_25 = librosa.load(row['location'], sr=target_sample_rate, res_type='kaiser_fast', offset=0.25)
         raw_audio = build_audio_feature_sequences(X, target_sample_rate)
         raw_audio_50 = build_audio_feature_sequences(X_50, target_sample_rate)
-        raw_audio_full = np.append(raw_audio, raw_audio_50, axis=0)
+        raw_audio_25 = build_audio_feature_sequences(X_25, target_sample_rate)
+        raw_audio_full = np.append(np.append(raw_audio, raw_audio_50, axis=0), raw_audio_25, axis=0)
         group_key = 'df_' + str(idx)
         entry_group = hdf.create_group(group_key)
         entry_group.create_dataset('label', data=row['name'])
@@ -142,12 +141,12 @@ def feature_gen_row_raw_save(target_sample_rate, hdf, idx, row):
 def feature_gen_row_raw_validation_save(target_sample_rate, hdf, idx, row):
     try:
         print('generating features for: ' + row['location'])
-        X_25, sample_rate_25 = librosa.load(row['location'], sr=target_sample_rate, res_type='kaiser_fast', offset=0.25)
-        raw_audio_25 = build_audio_feature_sequences(X_25, target_sample_rate)
+        X, sample_rate = librosa.load(row['location'], sr=target_sample_rate, res_type='kaiser_fast')
+        raw_audio = build_audio_feature_sequences(X, target_sample_rate)
         group_key = 'df_' + str(idx)
         entry_group = hdf.create_group(group_key)
         entry_group.create_dataset('label', data=row['name'])
-        entry_group.create_dataset('feature', data=raw_audio_25)
+        entry_group.create_dataset('feature', data=raw_audio)
     except Exception as e:
         print('error while generating features for: ' + row['location'])
         print(e)
@@ -155,7 +154,7 @@ def feature_gen_row_raw_validation_save(target_sample_rate, hdf, idx, row):
 
 
 def save_training_data(sample_rate, out_file):
-    training_data = pd.read_csv('songs_training.csv', header=0)
+    training_data = pd.read_csv(training_csv, header=0)
     feature_gen_row_fn = partial(feature_gen_row, sample_rate)
     actual_training_data = training_data.apply(feature_gen_row_fn, axis=1)
     actual_training_data.columns = ['feature', 'label']
@@ -166,7 +165,7 @@ def save_training_data(sample_rate, out_file):
 
 
 def save_training_data_raw(sample_rate, out_file):
-    training_data = pd.read_csv('songs_training.csv', header=0)
+    training_data = pd.read_csv(training_csv, header=0)
     # actual_training_data = training_data.apply(feature_gen_row_fn, axis=1)
     # df = pd.concat(actual_training_data.values.tolist())
     with h5py.File(out_file, 'a') as hdf:
@@ -175,7 +174,7 @@ def save_training_data_raw(sample_rate, out_file):
 
 
 def save_validation_data_raw(sample_rate, out_file):
-    training_data = pd.read_csv('songs_training.csv', header=0)
+    training_data = pd.read_csv(validation_csv, header=0)
     # actual_training_data = training_data.apply(feature_gen_row_fn, axis=1)
     # df = pd.concat(actual_training_data.values.tolist())
     with h5py.File(out_file, 'a') as hdf:
@@ -184,12 +183,16 @@ def save_validation_data_raw(sample_rate, out_file):
 
 
 def build_label_encoder():
-    training_data = pd.read_csv('songs_training.csv', header=0)
+    training_data = pd.read_csv(training_csv, header=0)
     y = np.array(training_data['name'].tolist())
     lb = LabelEncoder()
     lb.fit_transform(y)
     np.save('songs_training_data_classes.npy', lb.classes_)
 
+
+# write_training_csv()
+# write_validation_csv()
+# build_label_encoder()
 
 # save_training_data_raw(22050, 'songs_training_data_22050_sequence_parts.h5')
 # save_validation_data_raw(22050, 'songs_validation_data_22050_sequence_parts.h5')

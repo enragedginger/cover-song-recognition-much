@@ -97,7 +97,7 @@ def do_prediction_knn_mfcc(embedding_model, knn, song_path, target_sample_rate=2
 def do_prediction_lstm(lstm_model, song_path, target_sample_rate=22050):
     X, sample_rate = librosa.load(song_path, sr=target_sample_rate, res_type='kaiser_fast')
     float_audio_segments = build_audio_feature_sequences(X, target_sample_rate)
-    timeseries_length = 100
+    timeseries_length = 32
     batch_size = float_audio_segments.shape[0] - timeseries_length
     features = np.zeros((batch_size, timeseries_length, 33), dtype=np.float64)
     for batch_idx in range(0, batch_size):
@@ -111,13 +111,19 @@ def do_prediction_lstm(lstm_model, song_path, target_sample_rate=22050):
 
 librosa.load('/home/stephen/Desktop/GarageBand/ComeAsYouAre.mp3', sr=22050, res_type='kaiser_fast')
 
-do_prediction_knn_mfcc(embedding_model, knn, '/Users/hopper/Desktop/music/Pickin\' On/Pickin\' On Led Zeppelin/03_-_ramble_on.mp3')
-do_prediction_knn_mfcc(embedding_model, knn, '/home/stephen/Desktop/GarageBand/SmellsLikeTeenSpirit.mp3')
-do_prediction_knn_mfcc(embedding_model, knn, '/home/stephen/Desktop/GarageBand/ComeAsYouAre.mp3')
+do_prediction_lstm(lstm_model, '/Users/hopper/Desktop/music/Pickin\' On/Pickin\' On Led Zeppelin/03_-_ramble_on.mp3')
+do_prediction_lstm(lstm_model, '/home/stephen/Desktop/GarageBand/SmellsLikeTeenSpirit.mp3')
+do_prediction_lstm(lstm_model, '/home/stephen/Desktop/GarageBand/ComeAsYouAre.mp3')
 do_prediction_lstm(lstm_model, '/home/stephen/Desktop/GarageBand/SevenNationArmy.mp3')
 do_prediction_lstm(lstm_model, '/home/stephen/Desktop/music/training/Rage Against the Machine/Renegades/06 I\'m Housin\'.wma')
 
 do_prediction_knn_mfcc(embedding_model, knn, "/home/stephen/Desktop/music/validation/Pickin' On/Pickin' On Led Zeppelin/02_-_kashmir.mp3")
+
+
+do_prediction_lstm(lstm_model, '/Users/hopper/Music/GarageBand/SmellsLikeTeenSpirit.mp3')
+do_prediction_lstm(lstm_model, '/Users/hopper/Music/GarageBand/ComeAsYouAre.mp3')
+do_prediction_lstm(lstm_model, '/Users/hopper/Music/GarageBand/SevenNationArmy.mp3')
+do_prediction_lstm(lstm_model, '/Users/hopper/Desktop/music/Rage Against the Machine/Renegades/06 I\'m Housin\'.wma')
 
 
 do_prediction('/Users/hopper/Desktop/music/Nirvana/Nevermind/01 Smells Like Teen Spirit.wma')

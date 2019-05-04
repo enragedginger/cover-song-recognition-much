@@ -23,7 +23,7 @@ encoder = LabelEncoder()
 encoder.classes_ = np.load('songs_training_data_classes.npy')
 
 timeseries_length = 32
-mini_batch_size = 32
+mini_batch_size = 16
 
 
 def build_lstm_audio_network(n_classes):
@@ -31,10 +31,9 @@ def build_lstm_audio_network(n_classes):
     inputs = Input(shape=input_shape)
     # lstm = LSTM(128, return_sequences=True)(inputs)
     # lstm = LSTM(32, return_sequences=False)(lstm)
-    lstm = LSTM(32, dropout=0.15, recurrent_dropout=0.35, return_sequences=True, unroll=True, implementation=2)(inputs)
-    lstm = LSTM(32, dropout=0.15, recurrent_dropout=0.35, return_sequences=True, unroll=True, implementation=2)(lstm)
-    lstm = LSTM(32, dropout=0.15, recurrent_dropout=0.35, return_sequences=True, unroll=True, implementation=2)(lstm)
-    lstm = LSTM(32, dropout=0.15, recurrent_dropout=0.35, return_sequences=False, unroll=True, implementation=2)(lstm)
+    lstm = LSTM(64, dropout=0.10, recurrent_dropout=0.10, return_sequences=True, unroll=True, implementation=2)(inputs)
+    lstm = LSTM(64, dropout=0.10, recurrent_dropout=0.10, return_sequences=True, unroll=True, implementation=2)(lstm)
+    lstm = LSTM(64, dropout=0.10, recurrent_dropout=0.10, return_sequences=False, unroll=True, implementation=2)(lstm)
     # lstm = Dense(100, activation='relu')(lstm)
     lstm = Dense(n_classes, activation='softmax')(lstm)
     model = Model(inputs, lstm)
