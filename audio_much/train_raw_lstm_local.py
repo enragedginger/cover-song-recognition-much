@@ -27,8 +27,10 @@ from keras.callbacks import TensorBoard
 encoder = LabelEncoder()
 encoder.classes_ = np.load('songs_training_data_classes.npy')
 
+factor = 2 ** 8
 timeseries_length = 32
-mini_batch_size = 16
+mini_batch_size = 8
+learning_rate = 0.001
 
 
 def build_lstm_audio_network(n_classes):
@@ -36,11 +38,14 @@ def build_lstm_audio_network(n_classes):
     inputs = Input(shape=input_shape)
     # lstm = LSTM(128, return_sequences=True)(inputs)
     # lstm = LSTM(32, return_sequences=False)(lstm)
-    lstm = LSTM(32, dropout=0.15, recurrent_dropout=0.35, return_sequences=False, unroll=True, implementation=2, input_shape=input_shape)(inputs)
+    # lstm = LSTM(64, dropout=0.10, recurrent_dropout=0.30, return_sequences=True, unroll=True, implementation=2, input_shape=input_shape)(inputs)
+    lstm = LSTM(16, dropout=0.05, recurrent_dropout=0.05, return_sequences=True, unroll=True, implementation=2,
+                input_shape=input_shape)(inputs)
+    lstm = LSTM(16, dropout=0.05, recurrent_dropout=0.05, return_sequences=False, unroll=True, implementation=2)(lstm)
     # lstm = Dense(100, activation='relu')(lstm)
     lstm = Dense(n_classes, activation='softmax')(lstm)
     model = Model(inputs, lstm)
-    model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer=Adam(lr=learning_rate), loss='categorical_crossentropy', metrics=['accuracy'])
     return model
 
 
@@ -87,7 +92,7 @@ class MiniBatchGeneratorSequence(Sequence):
 training_data_filename = 'songs_training_data_22050_sequence_parts.h5'
 validation_data_filename = 'songs_validation_data_22050_sequence_parts.h5'
 lstm_model = build_lstm_audio_network(len(encoder.classes_))
-
+reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=10, verbose=1, mode='auto', min_lr=0.0001)
 
 
 # tensorboard = TensorBoard(log_dir="logs/{}".format(time.time()), update_freq=1000)
@@ -96,8 +101,10 @@ lstm_model.fit_generator(MiniBatchGeneratorSequence(training_data_filename),
                          validation_data=MiniBatchGeneratorSequence(validation_data_filename),
                          workers=3, max_queue_size=10, use_multiprocessing=True,
                          epochs=10,
-                         # callbacks=[tensorboard]
-                         )
+                         callbacks=[
+                             # tensorboard,
+                             reduce_lr
+                         ])
 
 
 lstm_model.save('model_raw_22050_lstm_01.h5')
