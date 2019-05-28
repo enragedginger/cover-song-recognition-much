@@ -32,9 +32,8 @@ mini_batch_size = 4
 def build_lstm_audio_network(n_classes):
     input_shape = (timeseries_length, 12)
     inputs = Input(shape=input_shape)
-    # lstm = LSTM(128, return_sequences=True)(inputs)
-    # lstm = LSTM(32, return_sequences=False)(lstm)
-    lstm = LSTM(128, dropout=0.15, recurrent_dropout=0.5, return_sequences=False, unroll=True, implementation=2)(inputs)
+    lstm = LSTM(128, dropout=0.15, recurrent_dropout=0.5, return_sequences=False,
+                unroll=True, implementation=2)(inputs)
     lstm = Dense(n_classes, activation='softmax')(lstm)
     model = Model(inputs, lstm)
     model.compile(optimizer=Adam(lr=0.001), loss='categorical_crossentropy', metrics=['accuracy'])
@@ -70,6 +69,9 @@ class FullSongValidation(Callback):
             [(max_label, occurrences)] = counts.most_common(1)
             if label == max_label:
                 correct_count += 1
+                correct_guesses = counts[label]
+                label_accuracy = correct_guesses / features.shape[0]
+                print("Correct song: {:s} - acc: {:.2f}".format(label, label_accuracy))
             else:
                 correct_guesses = counts[label]
                 label_accuracy = correct_guesses / features.shape[0]
@@ -91,7 +93,8 @@ class MiniBatchGeneratorSequence(Sequence):
                 x = hdf[hdf_key]['feature'][()]
                 batch_size = x.shape[0]
                 curr_batch_size = int(np.ceil(batch_size / mini_batch_size))
-                self.batch_metas.append({'start': self.batches, 'end': self.batches + curr_batch_size, 'hdf_key': hdf_key})
+                self.batch_metas.append({'start': self.batches,
+                                         'end': self.batches + curr_batch_size, 'hdf_key': hdf_key})
                 self.batches += curr_batch_size
     def __len__(self):
         return self.batches
