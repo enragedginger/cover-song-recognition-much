@@ -4,9 +4,6 @@ os.environ['KMP_DUPLICATE_LIB_OK']='True'
 import pandas as pd
 from keras.models import Sequential, Model
 from keras.optimizers import Adam
-from kapre.time_frequency import Melspectrogram
-from kapre.utils import Normalization2D
-from kapre.augmentation import AdditiveNoise
 from keras.layers import Dropout, concatenate, BatchNormalization, Activation, subtract, Lambda, Concatenate, AveragePooling2D, ZeroPadding2D, Convolution2D, MaxPooling2D, Flatten, Dense, Reshape, Input, LSTM, RepeatVector, Convolution3D, Convolution1D, UpSampling2D
 from keras import backend as K
 from keras.utils import np_utils
@@ -18,7 +15,6 @@ config = tf.ConfigProto()
 config.gpu_options.allow_growth=True
 sess = tf.Session(config=config)
 from functools import partial
-import gc
 import h5py
 
 encoder = LabelEncoder()
@@ -73,68 +69,6 @@ def create_triplet_loss_model_with_loss_fn(base_model, input_shape):
     return model, base_model
 
 
-def build_embedding_network_base(sample_rate):
-    input_shape = (1, sample_rate)
-    inputs = Input(shape=input_shape)
-    spectrogram = Melspectrogram(sr=sample_rate, n_dft=1024, input_shape=input_shape,
-                                 return_decibel_melgram=True, trainable_kernel=False)(inputs)
-    # spectrogram = AdditiveNoise(0.2)(spectrogram)
-    spectrogram = Normalization2D(str_axis='freq')(spectrogram)
-    spectrogram = Dropout(0.4)(spectrogram)
-    convo = Convolution2D(96, 6, strides=2, activation='relu')(spectrogram)
-    convo = Convolution2D(96, 1, strides=1, activation='relu')(convo)
-    convo = BatchNormalization()(convo)
-    convo = MaxPooling2D((2, 2), strides=2)(convo)
-    convo = Dropout(0.4)(convo)
-    convo = Convolution2D(256, 4, strides=2, activation='relu')(convo)
-    convo = Convolution2D(256, 1, strides=1, activation='relu')(convo)
-    convo = BatchNormalization()(convo)
-    convo = MaxPooling2D((2, 2), strides=2)(convo)
-    convo = Dropout(0.4)(convo)
-    convo = Convolution2D(384, 2, strides=1, activation='relu')(convo)
-    convo = Convolution2D(384, 1, strides=1, activation='relu')(convo)
-    convo = BatchNormalization()(convo)
-    # convo = MaxPooling2D((3, 3), strides=2)(convo)
-    # convo = Convolution2D(256, (3, 3), strides=1)(convo)
-    # convo = Convolution2D(256, (1, 1), strides=1)(convo)
-    convo = AveragePooling2D((6, 1), strides=1)(convo)
-    convo = Dropout(0.4)(convo)
-    convo = BatchNormalization()(convo)
-    # convo = Dense(1024, activation='sigmoid')(convo)
-    # model = Model(inputs, convo)
-    # model.compile(optimizer='sgd', loss='mse')
-    return Model(inputs, convo)
-
-
-def build_mfcc_embedding_network_base_backup(mfcc_cnt):
-    input_shape = (1, mfcc_cnt)
-    inputs = Input(shape=input_shape)
-    convo = Reshape((1, 1, mfcc_cnt))(inputs)
-    convo = Convolution2D(96, 1, strides=2, activation='relu')(convo)
-    # convo = Convolution2D(96, 1, strides=1, activation='relu')(convo)
-    convo = BatchNormalization()(convo)
-    convo = MaxPooling2D((1, 1), strides=2)(convo)
-    # convo = Dropout(0.4)(convo)
-    convo = Convolution2D(256, 1, strides=2, activation='relu')(convo)
-    # convo = Convolution2D(256, 1, strides=1, activation='relu')(convo)
-    convo = BatchNormalization()(convo)
-    convo = MaxPooling2D((1, 1), strides=2)(convo)
-    # convo = Dropout(0.4)(convo)
-    convo = Convolution2D(384, 1, strides=1, activation='relu')(convo)
-    # convo = Convolution2D(384, 1, strides=1, activation='relu')(convo)
-    convo = BatchNormalization()(convo)
-    convo = MaxPooling2D((1, 1), strides=2)(convo)
-    # convo = Convolution2D(256, (3, 3), strides=1)(convo)
-    # convo = Convolution2D(256, (1, 1), strides=1)(convo)
-    convo = AveragePooling2D((1, 1), strides=1)(convo)
-    # convo = Dropout(0.4)(convo)
-    convo = BatchNormalization()(convo)
-    # convo = Dense(1024, activation='sigmoid')(convo)
-    # model = Model(inputs, convo)
-    # model.compile(optimizer='sgd', loss='mse')
-    return Model(inputs, convo)
-
-
 def build_mfcc_embedding_network_base(mfcc_cnt):
     input_shape = (1, mfcc_cnt, 44)
     inputs = Input(shape=input_shape)
@@ -162,11 +96,6 @@ def build_mfcc_embedding_network_base(mfcc_cnt):
     # model = Model(inputs, convo)
     # model.compile(optimizer='sgd', loss='mse')
     return Model(inputs, convo)
-
-
-# build_mfcc_embedding_network_base(40).summary()
-# build_embedding_network_base(22050).summary()
-# build_mfcc_embedding_network_base(40).summary()
 
 
 def build_encoder_model_with_loss_fn(mfcc_cnt):
@@ -212,6 +141,7 @@ def batch_generator(df_keys, training_data_filename):
         yield [reshaped_query_x, reshaped_positive_x, reshaped_negative_x], y
 
 
+# Build the models and print the summary as a sanity check
 triplet_embedding_model, embedding_model = build_encoder_model_with_loss_fn(40)
 triplet_embedding_model.summary()
 embedding_model.summary()
@@ -231,27 +161,26 @@ with h5py.File(training_data_filename, 'a') as hdf:
                                           steps_per_epoch=len(hdf_keys), epochs=100, use_multiprocessing=True)
 
 
-hdf = pd.HDFStore('songs_training_data_22050_raw_parts.h5')
 
-
-
+# Example code for saving the models to disk
 embedding_model.save('model_raw_22050_nnfp_embedding_mmfc_01.h5')
 triplet_embedding_model.save('model_raw_22050_nnfp_triplet_embedding_mmfc_01.h5')
-# triplet_embedding_model.compile(loss='categorical_crossentropy', optimizer=Adam(1e-5, clipnorm=1.0), metrics=['accuracy'])
-# model_metric.save('model_raw_22050_nnfp_metric_multi.h5')
-# triplet_embedding_model.layers[3].save('model_raw_22050_nnfp_embedding.h5')
 
 
+# Example code for reading the models from disk with custom loss functions
 from keras.models import load_model
 embedding_model = load_model('model_raw_22050_nnfp_embedding_mmfc_01.h5',
                        custom_objects={'tf': tf, 'identity_loss': identity_loss})
 triplet_embedding_model = load_model('model_raw_22050_nnfp_triplet_embedding_mmfc_01.h5',
                        custom_objects={'tf': tf, 'identity_loss': identity_loss})
 
+
+# Unset the trainable parameters after reading the model in from disk
 for l in embedding_model.layers:
     l.trainable = False
 
 
+# Read data for usage by KNN
 def read_encoding_df(hdf, embedding_model, encoder, df_key):
     X = hdf[df_key]['feature'][()]
     label = hdf[df_key]['label'][()]
@@ -264,6 +193,7 @@ def read_encoding_df(hdf, embedding_model, encoder, df_key):
     return pd.DataFrame({'feature': np.array(reshaped_output_x).tolist(), 'label': y})
 
 
+# Run all of the songs through our model, generate embeddings, and export as a giant DF
 def build_knn_data(data_filename):
     # with pd.HDFStore('songs_training_data_22050_mfcc_parts.h5') as hdf:
     with h5py.File(data_filename, 'a') as hdf:
@@ -274,33 +204,13 @@ def build_knn_data(data_filename):
         return df
 
 
-df_key = 'df_0'
-hdf = h5py.File(training_data_filename, 'a')
-with h5py.File(training_data_filename, 'a') as hdf:
-    X = hdf[df_key]['feature'][()]
-    label = hdf[df_key]['label'][()]
-    reshaped_x = X[:, np.newaxis, :]
-    output_x = embedding_model.predict(reshaped_x)
-    reshaped_output_x = output_x.reshape(len(output_x), -1)
-    y = encoder.transform([label] * len(X))
-    thing = pd.DataFrame({'feature': np.array(reshaped_output_x).tolist(), 'label': y})
-
-with h5py.File(training_data_filename, 'a') as hdf:
-    [print(df_key) for df_key in hdf.keys()]
-
-
-from sklearn.ensemble import RandomForestClassifier
-knn = RandomForestClassifier(n_jobs=-1)
-
+# train and test the knn. This could take a long time.
 from sklearn.neighbors import KNeighborsClassifier
 knn = KNeighborsClassifier(n_neighbors=10, weights='distance', n_jobs=-1)
 train_df = build_knn_data(training_data_filename)
 knn.fit(list(train_df['feature']), train_df['label'])
 test_df = build_knn_data(validation_data_filename)
 knn.score(list(test_df['feature']), list(test_df['label']))
-
-from sklearn.svm import SVC
-knn = SVC(gamma='auto')
 
 
 import joblib

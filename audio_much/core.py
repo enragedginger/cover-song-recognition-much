@@ -1,23 +1,25 @@
 import os
 import pandas as pd
-import glob
 import h5py
 import csv
 
 import librosa
-# import librosa.display
 import numpy as np
 import re
 from functools import partial
 from sklearn.preprocessing import LabelEncoder
 
+# update these `*_dir` variables to your liking
+# Alternatively, we should make these arguments or project properties
 root_music_dir = '/Users/hopper/Desktop/music_subset'
 root_music_validation_dir = '/Users/hopper/Desktop/validation_music'
-# root_music_dir='/home/stephen/Desktop/music/training'
 training_csv = 'songs_training.csv'
 validation_csv = 'songs_validation.csv'
 
 
+# update this tempo map with entries for your own songs
+# Ideally we'd not have to do this
+# Realistically though, we can just extract this to its own file maybe
 tempo_map = {
     "testify": 118,
     "bound_for_the_floor": 119,
@@ -81,15 +83,7 @@ def feature_gen_row(target_sample_rate, row):
         return [None, row['name']]
 
 
-def build_float_audio_segments(X, target_sample_rate):
-    len_second = 1.0
-    split = int(target_sample_rate * len_second)
-    split_remainder = int(X.shape[0] % split)
-    split_count = int(X[:-split_remainder].shape[0] / split) if split_remainder != 0 else int(X[:].shape[0] / split)
-    audio_segments = np.split(X[:-split_remainder], split_count) if split_remainder != 0 else np.split(X[:], split_count)
-    return [x.astype('float') for x in audio_segments]
-
-
+# for MFCC feature sets where we're cool with just taking the mean across the frequencies
 def build_float_audio_mfcc_segments(X, target_sample_rate):
     len_second = 1.0
     split = int(target_sample_rate * len_second)
@@ -99,6 +93,7 @@ def build_float_audio_mfcc_segments(X, target_sample_rate):
     return np.array([np.mean(librosa.feature.mfcc(y=x.astype('float'), sr=target_sample_rate, n_mfcc=40).T, axis=0) for x in audio_segments])
 
 
+# for MFCC feature sets where we want the full MFCC output
 def build_float_audio_mfcc_2d_segments(X, target_sample_rate):
     len_second = 1.0
     split = int(target_sample_rate * len_second)
@@ -108,6 +103,7 @@ def build_float_audio_mfcc_2d_segments(X, target_sample_rate):
     return np.array([librosa.feature.mfcc(y=x.astype('float'), sr=target_sample_rate, n_mfcc=40) for x in audio_segments])
 
 
+# for more complex feature sets where we don't know exactly what we want to use
 def build_audio_feature_sequences(X, target_sample_rate):
     hop_length = 4096
     mfcc = librosa.feature.mfcc(y=X, sr=target_sample_rate, hop_length=hop_length, n_mfcc=13)
@@ -125,6 +121,7 @@ def build_audio_feature_sequences(X, target_sample_rate):
     return features
 
 
+# for feature sets where we only want the Chroma note features
 def build_beat_audio_feature_sequences(y, target_sample_rate, estimated_tempo):
     hop_length = 512
     # y_harmonic, y_percussive = librosa.effects.hpss(y)
@@ -134,18 +131,15 @@ def build_beat_audio_feature_sequences(y, target_sample_rate, estimated_tempo):
     # mfcc_feature_stack = librosa.util.sync(np.vstack([mfcc, mfcc_delta]), beat_frames)
     chromagram = librosa.feature.chroma_cens(y=y, sr=target_sample_rate, hop_length=hop_length)
     beat_chroma = librosa.util.sync(chromagram, beat_frames, aggregate=np.mean)
-    # spectral_contrast = librosa.feature.spectral_contrast(y=y_harmonic, sr=target_sample_rate, hop_length=hop_length)
-    # beat_spectral_contrast = librosa.util.sync(spectral_contrast, beat_frames, aggregate=np.mean)
     timeseries_length = beat_chroma.shape[1]
     features = np.zeros((timeseries_length, 12), dtype=np.float64)
-    # features[:, 0:26] = mfcc_feature_stack.T[0:timeseries_length, :]
-    # features[:, 26:38] = beat_chroma.T[0:timeseries_length, :]
-    # features[:, 38:45] = beat_spectral_contrast.T[0:timeseries_length, :]
     features[:, 0:12] = beat_chroma.T[0:timeseries_length, :]
     return features
 
 
-# https://github.com/keunwoochoi/kapre/blob/master/examples/prepare%20audio.ipynb
+# We're not using this function. This is the issue I alluded to in the presentation about weird Pandas
+# DataFrame serialization nonsense.
+# Keeping this for the lolz
 def feature_gen_row_raw(target_sample_rate, row):
     try:
         print('generating features for: ' + row['location'])
@@ -172,6 +166,9 @@ def feature_gen_row_raw_save(target_sample_rate, hdf, idx, row):
     try:
         print('generating features for: ' + row['location'])
         X, sample_rate = librosa.load(row['location'], sr=target_sample_rate, res_type='kaiser_fast')
+        # I forgot to mention this during the presentation but I did some data augmentation at one point wherein I
+        # loaded the feature audio starting at different offsets from the start of the song
+        # This became irrelevant once I switched to an LSTM architecture with sliding windoughs.
         # X_50, sample_rate_50 = librosa.load(row['location'], sr=target_sample_rate, res_type='kaiser_fast', offset=0.5)
         # X_25, sample_rate_25 = librosa.load(row['location'], sr=target_sample_rate, res_type='kaiser_fast', offset=0.25)
         for shift_idx in range(0, 1):
@@ -208,6 +205,7 @@ def feature_gen_row_raw_validation_save(target_sample_rate, hdf, idx, row):
         raise e
 
 
+# Again, this is the whole DF saving nonsense thing. I'm keeping this for the lolz.
 def save_training_data(sample_rate, out_file):
     training_data = pd.read_csv(training_csv, header=0)
     feature_gen_row_fn = partial(feature_gen_row, sample_rate)
@@ -221,8 +219,6 @@ def save_training_data(sample_rate, out_file):
 
 def save_training_data_raw(sample_rate, out_file):
     training_data = pd.read_csv(training_csv, header=0)
-    # actual_training_data = training_data.apply(feature_gen_row_fn, axis=1)
-    # df = pd.concat(actual_training_data.values.tolist())
     with h5py.File(out_file, 'a') as hdf:
         for idx in np.arange(training_data.shape[0]):
             feature_gen_row_raw_save(sample_rate, hdf, idx, training_data.iloc[idx])
@@ -230,50 +226,18 @@ def save_training_data_raw(sample_rate, out_file):
 
 def save_validation_data_raw(sample_rate, out_file):
     training_data = pd.read_csv(validation_csv, header=0)
-    # actual_training_data = training_data.apply(feature_gen_row_fn, axis=1)
-    # df = pd.concat(actual_training_data.values.tolist())
     with h5py.File(out_file, 'a') as hdf:
         for idx in np.arange(training_data.shape[0]):
             feature_gen_row_raw_validation_save(sample_rate, hdf, idx, training_data.iloc[idx])
 
 
-def build_label_encoder():
+def build_label_encoder(label_filename):
     training_data = pd.read_csv(training_csv, header=0)
     y = np.array(training_data['name'].tolist())
     lb = LabelEncoder()
     lb.fit_transform(y)
-    np.save('songs_training_data_classes.npy', lb.classes_)
+    np.save(label_filename, lb.classes_)
 
-
-# import librosa.display
-# import matplotlib.pyplot as plt
-#
-# song_map_pairs = [
-#     {'train': '/Users/hopper/Desktop/music_subset/Come as You Are.wma',
-#      'validation': '/Users/hopper/Desktop/validation_music/Come as You Are.mp3'},
-#     {'train': '/Users/hopper/Desktop/music_subset/Smells Like Teen Spirit.wma',
-#      'validation': '/Users/hopper/Desktop/validation_music/Smells Like Teen Spirit.mp3'},
-#     {'train': '/Users/hopper/Desktop/music_subset/Seven Nation Army.mp3',
-#      'validation': '/Users/hopper/Desktop/validation_music/Seven Nation Army.mp3'},
-# ]
-#
-# for song_map in song_map_pairs:
-#     target_sample_rate = 44100
-#     y_train, sample_rate = librosa.load(song_map['train'], sr=target_sample_rate, res_type='kaiser_fast')
-#     y_validation, sample_rate = librosa.load(song_map['validation'], sr=target_sample_rate, res_type='kaiser_fast')
-#     features_train = build_beat_audio_feature_sequences(y_train, target_sample_rate)
-#     features_validation = build_beat_audio_feature_sequences(y_validation, target_sample_rate)
-#     plt.figure()
-#     ax1 = plt.subplot(2,1,1)
-#     plt1 = librosa.display.specshow(features_validation.T, y_axis='chroma', x_axis='time')
-#     plt.title('chroma_cq')
-#     plt.colorbar()
-#     plt.subplot(2,1,2, sharex=ax1)
-#     plt2 = librosa.display.specshow(features_train.T, y_axis='chroma', x_axis='time')
-#     plt.title('chroma_cens')
-#     plt.colorbar()
-#     plt.tight_layout()
-#     plt.show()
 
 def estimate_tempo(path):
     target_sample_rate = 44100
@@ -285,38 +249,10 @@ def estimate_tempo(path):
     print(str(tempo))
 
 
-# estimate_tempo(root_music_dir + '/Highway to Hell.wma')
-# estimate_tempo(root_music_validation_dir + '/Highway to Hell.mp3')
-# estimate_tempo(root_music_dir + '/In Bloom.wma')
-# estimate_tempo(root_music_validation_dir + '/In Bloom.mp3')
-# estimate_tempo(root_music_dir + '/wonderwall.mp3')
-# estimate_tempo(root_music_validation_dir + '/wonderwall.mp3')
-
-# y_fast = librosa.effects.time_stretch(y, 2.0)
-# tempo_fast, beat_frames_fast = librosa.beat.beat_track(y=y_fast, sr=target_sample_rate)
-# tempo, beat_frames = librosa.beat.beat_track(y=y, sr=target_sample_rate)
-# tempo
-
-# path = root_music_dir + '/In Bloom.wma'
-# y, sample_rate = librosa.load(path, sr=target_sample_rate)
-#     y_harmonic, y_percussive = librosa.effects.hpss(y)
-# tempo, beat_frames = librosa.beat.beat_track(y=y, sr=target_sample_rate
-                                             # , start_bpm=70
-                                             # )
-
-
-# y, sample_rate = librosa.load('/Users/hopper/Desktop/music_subset/wonderwall.mp3', sr=target_sample_rate, res_type='kaiser_fast')
-# raw_audio = build_audio_feature_sequences(X, target_sample_rate)
-
+# Uncomment and use these to build your training and validation data sets
 # write_training_csv()
 # write_validation_csv()
-# build_label_encoder()
+# build_label_encoder('songs_training_data_classes.npy')
 
 # save_training_data_raw(44100, 'songs_training_data_44100_sequence_parts.h5')
 # save_validation_data_raw(44100, 'songs_validation_data_44100_sequence_parts.h5')
-
-# save_training_data_raw(44100, 'songs_training_data_44100_raw_parts.h5')
-
-# save_training_data_raw(44100, 'songs_training_data_44100_raw_parts.h5')
-
-# save_training_data_raw(44100, 'songs_training_data_44100_mfcc_parts.h5')
